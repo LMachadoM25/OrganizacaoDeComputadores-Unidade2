@@ -6,8 +6,8 @@ std::string Packet::toString() const {
     std::ostringstream oss;
 
     oss << "P" << id
-        << " origem=R" << source
-        << " destino=R" << destination
+        << " origem=T" << source_terminal << "(R" << source_router << ")"
+        << " destino=T" << destination_terminal << "(R" << destination_router << ")"
         << " atual=R" << current_router;
 
     if (!route_history.empty()) {

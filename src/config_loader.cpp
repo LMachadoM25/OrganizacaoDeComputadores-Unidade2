@@ -49,10 +49,12 @@ Network loadTopology(const std::string& path) {
 
     int router_count = 0;
     std::vector<std::pair<int, int>> links;
+    std::vector<std::pair<int, int>> terminals;
 
     enum class Section {
         None,
         Routers,
+        Terminals,
         Links
     };
 
@@ -72,6 +74,11 @@ Network loadTopology(const std::string& path) {
             continue;
         }
 
+        if (line == "[terminals]") {
+            section = Section::Terminals;
+            continue;
+        }
+
         if (line == "[links]") {
             section = Section::Links;
             continue;
@@ -81,6 +88,13 @@ Network loadTopology(const std::string& path) {
 
         if (section == Section::Routers) {
             iss >> router_count;
+        } else if (section == Section::Terminals) {
+            int terminal_id = 0;
+            int router_id = 0;
+
+            if (iss >> terminal_id >> router_id) {
+                terminals.emplace_back(terminal_id, router_id);
+            }
         } else if (section == Section::Links) {
             int a = 0;
             int b = 0;
@@ -96,6 +110,10 @@ Network loadTopology(const std::string& path) {
     }
 
     Network network(router_count);
+
+    for (const auto& terminal : terminals) {
+        network.addTerminal(terminal.first, terminal.second);
+    }
 
     for (const auto& link : links) {
         network.addBidirectionalLink(link.first, link.second);

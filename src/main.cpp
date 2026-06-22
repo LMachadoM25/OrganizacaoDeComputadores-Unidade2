@@ -41,7 +41,9 @@ private:
             return;
         }
 
-        output << "Simulacao SystemC - Rede em Chip SPIN com 8 roteadores\n\n";
+        output << "Simulacao SystemC - Rede em Chip SPIN com 8 roteadores\n";
+        output << "Modelo atual: arvore gorda quaternaria simplificada com terminais nas folhas\n\n";
+
         network_.printTopology(output);
 
         int packet_id = 0;
@@ -51,8 +53,8 @@ private:
                 if (event.cycle == cycle) {
                     Packet packet;
                     packet.id = packet_id++;
-                    packet.source = event.source;
-                    packet.destination = event.destination;
+                    packet.source_terminal = event.source;
+                    packet.destination_terminal = event.destination;
                     packet.created_cycle = cycle;
 
                     network_.injectPacket(packet, cycle, output);

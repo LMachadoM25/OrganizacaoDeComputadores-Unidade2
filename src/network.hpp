@@ -11,8 +11,10 @@ public:
     explicit Network(int router_count = 8);
 
     int routerCount() const;
+    int terminalCount() const;
 
     void addBidirectionalLink(int a, int b);
+    void addTerminal(int terminal_id, int router_id);
 
     void injectPacket(const Packet& packet, int cycle, std::ostream& out);
 
@@ -23,11 +25,17 @@ public:
 
 private:
     bool validRouter(int id) const;
-    int findNextHop(int source, int destination) const;
+    bool validTerminal(int id) const;
+
+    int routerForTerminal(int terminal_id) const;
+    int findNextHop(int source_router, int destination_router) const;
 
 private:
     std::vector<Router> routers_;
     std::vector<std::vector<int>> adjacency_;
+
+    // terminal_to_router_[T] = R
+    std::vector<int> terminal_to_router_;
 
     std::vector<Packet> delivered_packets_;
     std::vector<Packet> dropped_packets_;

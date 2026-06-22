@@ -22,8 +22,51 @@ int Network::routerCount() const {
     return static_cast<int>(routers_.size());
 }
 
+int Network::terminalCount() const {
+    int count = 0;
+
+    for (int router_id : terminal_to_router_) {
+        if (router_id != -1) {
+            count++;
+        }
+    }
+
+    return count;
+}
+
 bool Network::validRouter(int id) const {
     return id >= 0 && id < routerCount();
+}
+
+bool Network::validTerminal(int id) const {
+    return id >= 0 &&
+           id < static_cast<int>(terminal_to_router_.size()) &&
+           terminal_to_router_[id] != -1 &&
+           validRouter(terminal_to_router_[id]);
+}
+
+int Network::routerForTerminal(int terminal_id) const {
+    if (!validTerminal(terminal_id)) {
+        throw std::runtime_error("Terminal invalido: T" + std::to_string(terminal_id));
+    }
+
+    return terminal_to_router_[terminal_id];
+}
+
+void Network::addTerminal(int terminal_id, int router_id) {
+    if (terminal_id < 0) {
+        throw std::runtime_error("ID de terminal invalido");
+    }
+
+    if (!validRouter(router_id)) {
+        throw std::runtime_error("Terminal conectado a roteador invalido");
+    }
+
+    if (terminal_id >= static_cast<int>(terminal_to_router_.size())) {
+        terminal_to_router_.resize(terminal_id + 1, -1);
+    }
+
+    terminal_to_router_[terminal_id] = router_id;
 }
 
 void Network::addBidirectionalLink(int a, int b) {
@@ -39,44 +82,52 @@ void Network::addBidirectionalLink(int a, int b) {
 }
 
 void Network::injectPacket(const Packet& packet, int cycle, std::ostream& out) {
-    if (!validRouter(packet.source) || !validRouter(packet.destination)) {
+    if (!validTerminal(packet.source_terminal) ||
+        !validTerminal(packet.destination_terminal)) {
         out << "Ciclo " << cycle << ": pacote P" << packet.id
-            << " descartado por origem/destino invalido\n";
+            << " descartado por terminal de origem/destino invalido\n";
 
         dropped_packets_.push_back(packet);
         return;
     }
 
     Packet injected = packet;
-    injected.current_router = packet.source;
-    injected.created_cycle = cycle;
-    injected.route_history.clear();
-    injected.route_history.push_back(packet.source);
 
-    bool inserted = routers_[packet.source].pushCurrent(injected);
+    injected.source_router = routerForTerminal(packet.source_terminal);
+    injected.destination_router = routerForTerminal(packet.destination_terminal);
+    injected.current_router = injected.source_router;
+    injected.created_cycle = cycle;
+
+    injected.route_history.clear();
+    injected.route_history.push_back(injected.source_router);
+
+    bool inserted = routers_[injected.source_router].pushCurrent(injected);
 
     if (inserted) {
         out << "Ciclo " << cycle << ": pacote P" << injected.id
-            << " injetado em R" << injected.source
-            << " com destino R" << injected.destination << "\n";
+            << " injetado em T" << injected.source_terminal
+            << " via R" << injected.source_router
+            << " com destino T" << injected.destination_terminal
+            << " via R" << injected.destination_router
+            << "\n";
     } else {
         out << "Ciclo " << cycle << ": pacote P" << injected.id
-            << " descartado: buffer cheio em R" << injected.source << "\n";
+            << " descartado: buffer cheio em R" << injected.source_router << "\n";
 
         dropped_packets_.push_back(injected);
     }
 }
 
-int Network::findNextHop(int source, int destination) const {
-    if (source == destination) {
-        return source;
+int Network::findNextHop(int source_router, int destination_router) const {
+    if (source_router == destination_router) {
+        return source_router;
     }
 
     std::vector<int> previous(routerCount(), -1);
     std::queue<int> pending;
 
-    previous[source] = source;
-    pending.push(source);
+    previous[source_router] = source_router;
+    pending.push(source_router);
 
     while (!pending.empty()) {
         int current = pending.front();
@@ -89,7 +140,7 @@ int Network::findNextHop(int source, int destination) const {
 
             previous[neighbor] = current;
 
-            if (neighbor == destination) {
+            if (neighbor == destination_router) {
                 while (!pending.empty()) {
                     pending.pop();
                 }
@@ -101,13 +152,13 @@ int Network::findNextHop(int source, int destination) const {
         }
     }
 
-    if (previous[destination] == -1) {
+    if (previous[destination_router] == -1) {
         return -1;
     }
 
-    int node = destination;
+    int node = destination_router;
 
-    while (previous[node] != source) {
+    while (previous[node] != source_router) {
         node = previous[node];
     }
 
@@ -126,11 +177,13 @@ void Network::step(int cycle, std::ostream& out) {
 
         Packet packet = router.popCurrent();
 
-        if (packet.destination == router_id) {
+        if (packet.destination_router == router_id) {
+            packet.current_router = router_id;
             packet.delivered_cycle = cycle;
             delivered_packets_.push_back(packet);
 
             out << "R" << router_id << " entregou P" << packet.id
+                << " ao terminal T" << packet.destination_terminal
                 << " | latencia=" << (packet.delivered_cycle - packet.created_cycle)
                 << " ciclos"
                 << " | " << packet.toString() << "\n";
@@ -138,11 +191,11 @@ void Network::step(int cycle, std::ostream& out) {
             continue;
         }
 
-        int next_hop = findNextHop(router_id, packet.destination);
+        int next_hop = findNextHop(router_id, packet.destination_router);
 
         if (next_hop == -1) {
             out << "R" << router_id << " descartou P" << packet.id
-                << ": nao ha rota ate R" << packet.destination << "\n";
+                << ": nao ha rota ate R" << packet.destination_router << "\n";
 
             dropped_packets_.push_back(packet);
             continue;
@@ -157,7 +210,9 @@ void Network::step(int cycle, std::ostream& out) {
         if (forwarded_ok) {
             out << "R" << router_id << " encaminhou P" << packet.id
                 << " para R" << next_hop
-                << " | destino=R" << packet.destination << "\n";
+                << " | destino=T" << packet.destination_terminal
+                << "(R" << packet.destination_router << ")"
+                << "\n";
         } else {
             Packet blocked = packet;
             blocked.current_router = router_id;
@@ -182,7 +237,7 @@ void Network::step(int cycle, std::ostream& out) {
         router.commitNextCycle();
     }
 
-    out << "\nBuffers atuais:\n";
+    out << "\nBuffers atuais dos roteadores:\n";
 
     for (const Router& router : routers_) {
         out << "R" << router.id()
@@ -192,7 +247,11 @@ void Network::step(int cycle, std::ostream& out) {
 }
 
 void Network::printTopology(std::ostream& out) const {
-    out << "========== TOPOLOGIA ==========\n";
+    out << "========== TOPOLOGIA SPIN SIMPLIFICADA ==========\n";
+    out << "Roteadores: " << routerCount() << "\n";
+    out << "Terminais: " << terminalCount() << "\n\n";
+
+    out << "Links entre roteadores:\n";
 
     for (int i = 0; i < routerCount(); ++i) {
         out << "R" << i << " -> ";
@@ -207,6 +266,20 @@ void Network::printTopology(std::ostream& out) const {
 
         out << "\n";
     }
+
+    out << "\nTerminais conectados aos roteadores:\n";
+
+    for (int terminal_id = 0;
+         terminal_id < static_cast<int>(terminal_to_router_.size());
+         ++terminal_id) {
+        if (terminal_to_router_[terminal_id] == -1) {
+            continue;
+        }
+
+        out << "T" << terminal_id
+            << " -> R" << terminal_to_router_[terminal_id]
+            << "\n";
+    }
 }
 
 void Network::printFinalReport(std::ostream& out) const {
@@ -214,17 +287,29 @@ void Network::printFinalReport(std::ostream& out) const {
     out << "Pacotes entregues: " << delivered_packets_.size() << "\n";
     out << "Pacotes descartados: " << dropped_packets_.size() << "\n";
 
+    int total_latency = 0;
+    int total_hops = 0;
+
     if (!delivered_packets_.empty()) {
         out << "\nPacotes entregues:\n";
 
         for (const Packet& packet : delivered_packets_) {
+            int latency = packet.delivered_cycle - packet.created_cycle;
+            int hops = static_cast<int>(packet.route_history.size()) - 1;
+
+            total_latency += latency;
+            total_hops += hops;
+
             out << "P" << packet.id
-                << " origem=R" << packet.source
-                << " destino=R" << packet.destination
+                << " origem=T" << packet.source_terminal
+                << "(R" << packet.source_router << ")"
+                << " destino=T" << packet.destination_terminal
+                << "(R" << packet.destination_router << ")"
                 << " criado=" << packet.created_cycle
                 << " entregue=" << packet.delivered_cycle
-                << " latencia=" << (packet.delivered_cycle - packet.created_cycle)
+                << " latencia=" << latency
                 << " ciclos"
+                << " hops=" << hops
                 << " rota=";
 
             for (std::size_t i = 0; i < packet.route_history.size(); ++i) {
@@ -237,6 +322,18 @@ void Network::printFinalReport(std::ostream& out) const {
 
             out << "\n";
         }
+
+        double average_latency =
+            static_cast<double>(total_latency) /
+            static_cast<double>(delivered_packets_.size());
+
+        double average_hops =
+            static_cast<double>(total_hops) /
+            static_cast<double>(delivered_packets_.size());
+
+        out << "\nEstatisticas:\n";
+        out << "Latencia media: " << average_latency << " ciclos\n";
+        out << "Media de saltos: " << average_hops << " hops\n";
     }
 
     if (!dropped_packets_.empty()) {
@@ -244,8 +341,8 @@ void Network::printFinalReport(std::ostream& out) const {
 
         for (const Packet& packet : dropped_packets_) {
             out << "P" << packet.id
-                << " origem=R" << packet.source
-                << " destino=R" << packet.destination
+                << " origem=T" << packet.source_terminal
+                << " destino=T" << packet.destination_terminal
                 << "\n";
         }
     }
