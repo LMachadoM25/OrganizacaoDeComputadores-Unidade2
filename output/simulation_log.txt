@@ -1,0 +1,297 @@
+Simulacao SystemC - Rede em Chip SPIN com 8 roteadores
+
+========== TOPOLOGIA ==========
+R0 -> R2, R3
+R1 -> R2, R3
+R2 -> R0, R1, R4, R5
+R3 -> R0, R1, R4, R5
+R4 -> R2, R3, R6, R7
+R5 -> R2, R3, R6, R7
+R6 -> R4, R5
+R7 -> R4, R5
+Ciclo 0: pacote P0 injetado em R0 com destino R7
+
+================ CICLO 0 ================
+R0 encaminhou P0 para R2 | destino=R7
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 1 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+Ciclo 1: pacote P1 injetado em R1 com destino R6
+
+================ CICLO 1 ================
+R1 encaminhou P1 para R2 | destino=R6
+R2 encaminhou P0 para R4 | destino=R7
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 1 pacote(s)
+R3: 0 pacote(s)
+R4: 1 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+Ciclo 2: pacote P2 injetado em R7 com destino R0
+
+================ CICLO 2 ================
+R2 encaminhou P1 para R4 | destino=R6
+R4 encaminhou P0 para R7 | destino=R7
+R7 encaminhou P2 para R4 | destino=R0
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 2 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 1 pacote(s)
+Ciclo 3: pacote P3 injetado em R3 com destino R5
+
+================ CICLO 3 ================
+R3 encaminhou P3 para R5 | destino=R5
+R4 encaminhou P1 para R6 | destino=R6
+R7 entregou P0 | latencia=3 ciclos | P0 origem=R0 destino=R7 atual=R7 rota=R0->R2->R4->R7
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 1 pacote(s)
+R5: 1 pacote(s)
+R6: 1 pacote(s)
+R7: 0 pacote(s)
+Ciclo 4: pacote P4 injetado em R6 com destino R1
+
+================ CICLO 4 ================
+R4 encaminhou P2 para R2 | destino=R0
+R5 entregou P3 | latencia=1 ciclos | P3 origem=R3 destino=R5 atual=R5 rota=R3->R5
+R6 entregou P1 | latencia=3 ciclos | P1 origem=R1 destino=R6 atual=R6 rota=R1->R2->R4->R6
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 1 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 1 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 5 ================
+R2 encaminhou P2 para R0 | destino=R0
+R6 encaminhou P4 para R4 | destino=R1
+
+Buffers atuais:
+R0: 1 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 1 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 6 ================
+R0 entregou P2 | latencia=4 ciclos | P2 origem=R7 destino=R0 atual=R0 rota=R7->R4->R2->R0
+R4 encaminhou P4 para R2 | destino=R1
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 1 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 7 ================
+R2 encaminhou P4 para R1 | destino=R1
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 1 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 8 ================
+R1 entregou P4 | latencia=4 ciclos | P4 origem=R6 destino=R1 atual=R1 rota=R6->R4->R2->R1
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 9 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 10 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 11 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 12 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 13 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 14 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 15 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 16 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 17 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 18 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 19 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+================ CICLO 20 ================
+
+Buffers atuais:
+R0: 0 pacote(s)
+R1: 0 pacote(s)
+R2: 0 pacote(s)
+R3: 0 pacote(s)
+R4: 0 pacote(s)
+R5: 0 pacote(s)
+R6: 0 pacote(s)
+R7: 0 pacote(s)
+
+========== RELATORIO FINAL ==========
+Pacotes entregues: 5
+Pacotes descartados: 0
+
+Pacotes entregues:
+P0 origem=R0 destino=R7 criado=0 entregue=3 latencia=3 ciclos rota=R0->R2->R4->R7
+P3 origem=R3 destino=R5 criado=3 entregue=4 latencia=1 ciclos rota=R3->R5
+P1 origem=R1 destino=R6 criado=1 entregue=4 latencia=3 ciclos rota=R1->R2->R4->R6
+P2 origem=R7 destino=R0 criado=2 entregue=6 latencia=4 ciclos rota=R7->R4->R2->R0
+P4 origem=R6 destino=R1 criado=4 entregue=8 latencia=4 ciclos rota=R6->R4->R2->R1

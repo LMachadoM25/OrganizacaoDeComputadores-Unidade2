@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/spin_network.dir/src/main.cpp.o CMakeFiles/spin_network.dir/src/packet.cpp.o CMakeFiles/spin_network.dir/src/router.cpp.o CMakeFiles/spin_network.dir/src/network.cpp.o CMakeFiles/spin_network.dir/src/config_loader.cpp.o -o spin_network  -lsystemc 
