@@ -23,6 +23,42 @@ std::string trim(const std::string& s) {
 
 } // namespace
 
+TopologyConfig loadTopology(const std::string& path) {
+    std::ifstream file(path);
+    if (!file.is_open())
+        throw std::runtime_error("Nao foi possivel abrir arquivo de topologia: " + path);
+
+    TopologyConfig cfg;
+    std::string section;
+    std::string line;
+
+    while (std::getline(file, line)) {
+        line = trim(removeComment(line));
+        if (line.empty()) continue;
+
+        if (line == "[routers]")   { section = "routers";   continue; }
+        if (line == "[terminals]") { section = "terminals"; continue; }
+
+        std::istringstream iss(line);
+        if (section == "routers") {
+            std::string type; int id;
+            if (iss >> type >> id) {
+                if (type == "leaf") cfg.leaf_count++;
+                else if (type == "top") cfg.top_count++;
+            }
+        } else if (section == "terminals") {
+            TerminalMap m;
+            if (iss >> m.terminal >> m.router >> m.port)
+                cfg.terminals.push_back(m);
+        }
+    }
+
+    if (cfg.leaf_count <= 0 || cfg.top_count <= 0 || cfg.terminals.empty())
+        throw std::runtime_error("Topologia invalida ou incompleta: " + path);
+
+    return cfg;
+}
+
 std::vector<TrafficEvent> loadTraffic(const std::string& path) {
     std::ifstream file(path);
     if (!file.is_open())

@@ -1,31 +1,21 @@
 #pragma once
 
 // ============================================================
-// Network - Rede SPIN com topologia em árvore gorda quaternária
+// Network - modelo simplificado inspirado na rede SPIN
+// Topologia em arvore gorda quaternaria (K4,4) de 2 niveis.
 // ============================================================
 //
-// Topologia para 8 roteadores RSPIN:
+//   Nivel topo (raiz):  R4-R7   (lower_neighbors = folhas)
+//   Nivel folha:        R0-R3   (lower_neighbors = terminais)
+//   Cada folha liga suas 4 portas upper aos 4 roteadores de topo.
+//   Terminais: T0-T3 (R0), T4-T7 (R1), T8-T11 (R2), T12-T15 (R3)
 //
-//   Nível 1 (topo/raiz):   R4, R5, R6, R7  (upper_neighbors = nenhum / entre si)
-//   Nível 2 (folha):       R0, R1, R2, R3  (lower_neighbors = terminais)
-//
-//   Cada roteador do nível folha conecta suas 4 portas upper
-//   aos 4 roteadores do nível topo (fullmesh entre níveis).
-//
-//   Cada roteador de nível 2 tem 4 terminais conectados nas
-//   portas lower (D0-D3).
-//
-//   Terminais: T0-T3 (via R0), T4-T7 (via R1),
-//              T8-T11 (via R2), T12-T15 (via R3)
-//
-// Roteamento wormhole conforme regras SPIN:
-//   - Entrada lower → sobe adaptativo via porta upper
-//   - Entrada upper → desce determinístico via porta lower
-//   - Buffers centrais QDN/QUP para pacotes bloqueados
-//
-// Controle de fluxo por créditos implementado em SpinRouter.
+// Roteamento por menor caminho: sobe adaptativo / desce deterministico.
+// Pacotes tratados como unidade atomica (sem flits wormhole reais).
+// Controle de fluxo simplificado por capacidade de buffer.
 // ============================================================
 
+#include "config_loader.hpp"
 #include "packet.hpp"
 #include "router.hpp"
 
@@ -35,7 +25,7 @@
 
 class SpinNetwork {
 public:
-    SpinNetwork();
+    explicit SpinNetwork(const TopologyConfig& config);
 
     int routerCount()   const;
     int terminalCount() const;
@@ -46,12 +36,15 @@ public:
     // Executa um ciclo de simulação
     void step(int cycle, std::ostream& out);
 
+    // True se nao ha pacotes em nenhum buffer (para parada antecipada)
+    bool isEmpty() const;
+
     // Relatórios
     void printTopology(std::ostream& out)     const;
     void printFinalReport(std::ostream& out)  const;
 
 private:
-    void buildTopology();
+    void buildTopology(const TopologyConfig& config);
 
     bool validTerminal(int terminal_id) const;
     int  routerForTerminal(int terminal_id) const;

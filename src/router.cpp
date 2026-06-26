@@ -64,19 +64,17 @@ void SpinRouter::returnCreditLower(int port_index) {
 // Injeção de terminal (entra pela porta lower)
 // ============================================================
 bool SpinRouter::injectFromTerminal(const Packet& packet, int port_index) {
-    // Usa a porta lower correspondente ao terminal (mapeamento fixo da topologia)
-    // Bug 4 fix: não procura porta aleatória — usa o port_index correto
     if (lower_in_next_[port_index].size() < INPUT_BUFFER_CAPACITY) {
         Packet p = packet;
         p.entry_port = PortType::LOWER;
         lower_in_next_[port_index].push(p);
         return true;
     }
-    // Tenta buffer central QDN como overflow
-    if (central_qdn_next_.size() < CENTRAL_BUFFER_CAPACITY) {
+    // Overflow: pacote injetado precisa subir -> QUP
+    if (central_qup_next_.size() < CENTRAL_BUFFER_CAPACITY) {
         Packet p = packet;
         p.entry_port = PortType::LOWER;
-        central_qdn_next_.push(p);
+        central_qup_next_.push(p);
         return true;
     }
     return false;
@@ -90,14 +88,13 @@ bool SpinRouter::receiveFromUpper(int port_index, const Packet& packet) {
         Packet p = packet;
         p.entry_port = PortType::UPPER;
         upper_in_next_[port_index].push(p);
-        // Devolve crédito ao emissor (simulado: o Network cuida disso)
         return true;
     }
-    // Overflow para buffer central QUP
-    if (central_qup_next_.size() < CENTRAL_BUFFER_CAPACITY) {
+    // Overflow para buffer central QDN (pacote vem de cima -> descera)
+    if (central_qdn_next_.size() < CENTRAL_BUFFER_CAPACITY) {
         Packet p = packet;
         p.entry_port = PortType::UPPER;
-        central_qup_next_.push(p);
+        central_qdn_next_.push(p);
         return true;
     }
     return false;
@@ -110,11 +107,11 @@ bool SpinRouter::receiveFromLower(int port_index, const Packet& packet) {
         lower_in_next_[port_index].push(p);
         return true;
     }
-    // Overflow para buffer central QDN
-    if (central_qdn_next_.size() < CENTRAL_BUFFER_CAPACITY) {
+    // Overflow para buffer central QUP (pacote vem de baixo -> subira)
+    if (central_qup_next_.size() < CENTRAL_BUFFER_CAPACITY) {
         Packet p = packet;
         p.entry_port = PortType::LOWER;
-        central_qdn_next_.push(p);
+        central_qup_next_.push(p);
         return true;
     }
     return false;
@@ -122,13 +119,10 @@ bool SpinRouter::receiveFromLower(int port_index, const Packet& packet) {
 
 // ============================================================
 // Roteamento: seleciona porta de saída upper (adaptativo)
-// Escolhe a porta upper com menor ocupação no roteador vizinho.
-// Round-robin como desempate (conforme spec SPIN).
+// Prefere a porta com mais créditos; round-robin como desempate.
 // ============================================================
 int SpinRouter::selectUpperPort(int /*destination_router*/) const {
-    // Adaptativo: prefere a porta upper com mais créditos disponíveis
-    // (proxy para menor ocupação no vizinho)
-    int best_port   = -1;
+    int best_port    = -1;
     int best_credits = -1;
 
     for (int i = 0; i < SPIN_UPPER_PORTS; ++i) {
@@ -153,14 +147,12 @@ int SpinRouter::selectUpperPort(int /*destination_router*/) const {
 int SpinRouter::selectLowerPort(int destination_router, int destination_terminal) const {
     (void)destination_terminal;
 
-    // Nó folha (tree_level_==1): lower ports = terminais (-1)
-    // O destino é este roteador → entrega local
+    // Nó folha: lower ports = terminais. Destino neste roteador = entrega local.
     if (destination_router == id_) {
         return -1; // entrega local ao terminal
     }
 
-    // Nó topo (tree_level_==0): lower ports = roteadores folha
-    // Procura a porta que conecta ao roteador destino, com crédito
+    // Nó topo: procura a porta lower que conecta ao roteador destino, com crédito.
     for (int i = 0; i < SPIN_LOWER_PORTS; ++i) {
         int port = (rr_lower_out_ + i) % SPIN_LOWER_PORTS;
         if (lower_neighbors_[port] == destination_router && credits_lower_[port] > 0) {
@@ -191,224 +183,85 @@ bool SpinRouter::destinationIsBelow(int destination_router) const {
 }
 
 // ============================================================
+// tryRoute: decide o destino de um pacote (local / desce / sobe).
+// Mesma logica para entradas e buffers centrais, evitando que
+// pacotes fiquem presos por tratamento direcional incorreto.
+// ============================================================
+bool SpinRouter::tryRoute(const Packet& pkt, std::vector<ForwardRequest>& reqs,
+                          std::ostream& out, const std::string& src) {
+    // Entrega local
+    if (pkt.destination_router == id_) {
+        reqs.push_back({-1, -1, PortType::LOWER, pkt});
+        out << "  [R" << id_ << "] " << src << " entrega P" << pkt.id
+            << " ao terminal T" << pkt.destination_terminal << "\n";
+        return true;
+    }
+
+    // Destino abaixo: desce determinístico
+    if (destinationIsBelow(pkt.destination_router)) {
+        int dn = selectLowerPort(pkt.destination_router, pkt.destination_terminal);
+        if (dn >= 0 && credits_lower_[dn] > 0) {
+            credits_lower_[dn]--;
+            reqs.push_back({lower_neighbors_[dn], dn, PortType::LOWER, pkt});
+            out << "  [R" << id_ << "] " << src << " desce P" << pkt.id
+                << " -> R" << lower_neighbors_[dn] << " (D" << dn << ")\n";
+            return true;
+        }
+        return false;
+    }
+
+    // Caso contrário: sobe adaptativo
+    int up = selectUpperPort(pkt.destination_router);
+    if (up != -1 && credits_upper_[up] > 0) {
+        credits_upper_[up]--;
+        reqs.push_back({upper_neighbors_[up], up, PortType::UPPER, pkt});
+        out << "  [R" << id_ << "] " << src << " sobe P" << pkt.id
+            << " -> R" << upper_neighbors_[up] << " (U" << up << ")\n";
+        return true;
+    }
+    return false;
+}
+
+// ============================================================
 // process() — processa um ciclo
-// Aplica regras de roteamento SPIN:
-//   - Entrada lower → saída upper (adaptativo) OU saída lower (determinístico)
-//   - Entrada upper → saída lower (determinístico apenas)
-//   - Buffers centrais têm prioridade sobre entradas quando bloqueados
+// Encaminha a cabeça de cada buffer de entrada e dos buffers
+// centrais. Pacotes bloqueados permanecem e retentam no proximo
+// ciclo (nenhum pacote e descartado silenciosamente aqui).
 // ============================================================
 std::vector<SpinRouter::ForwardRequest> SpinRouter::process(int cycle, std::ostream& out) {
     std::vector<ForwardRequest> requests;
+    (void)cycle;
 
-    // --- Processa entradas das portas LOWER (DN units) ---
-    // Regra SPIN:
-    //   - Se destino está abaixo (vizinho lower): desce DETERMINÍSTICO
-    //   - Caso contrário: sobe ADAPTATIVO pelas portas upper
-    //   - Se subida bloqueada: buffer central QUP
     for (int i = 0; i < SPIN_LOWER_PORTS; ++i) {
         if (lower_in_current_[i].empty()) continue;
-
         Packet pkt = lower_in_current_[i].front();
-
-        // Entrega local (destino é este roteador)
-        if (pkt.destination_router == id_) {
+        if (tryRoute(pkt, requests, out, "DN" + std::to_string(i)))
             lower_in_current_[i].pop();
-            ForwardRequest req;
-            req.target_router  = -1;
-            req.target_port    = -1;
-            req.via_port_type  = PortType::LOWER;
-            req.packet         = pkt;
-            requests.push_back(req);
-            out << "  [R" << id_ << "] DN" << i
-                << " entrega P" << pkt.id
-                << " ao terminal T" << pkt.destination_terminal << "\n";
-            continue;
-        }
-
-        // Verifica se destino está diretamente abaixo (vizinho lower)
-        bool dest_is_below = destinationIsBelow(pkt.destination_router);
-
-        if (dest_is_below) {
-            // Desce deterministicamente
-            int dn_port = selectLowerPort(pkt.destination_router, pkt.destination_terminal);
-            if (dn_port >= 0 && credits_lower_[dn_port] > 0) {
-                lower_in_current_[i].pop();
-                credits_lower_[dn_port]--;
-                ForwardRequest req;
-                req.target_router  = lower_neighbors_[dn_port];
-                req.target_port    = dn_port;
-                req.via_port_type  = PortType::LOWER;
-                req.packet         = pkt;
-                requests.push_back(req);
-                out << "  [R" << id_ << "] DN" << i
-                    << " desce P" << pkt.id
-                    << " -> R" << req.target_router
-                    << " (D" << dn_port << ", credito=" << credits_lower_[dn_port] << ")\n";
-            } else {
-                // Bloqueado → QDN
-                if (central_qdn_next_.size() < CENTRAL_BUFFER_CAPACITY) {
-                    lower_in_current_[i].pop();
-                    central_qdn_next_.push(pkt);
-                    out << "  [R" << id_ << "] DN" << i
-                        << " P" << pkt.id << " bloqueado (desce) -> QDN\n";
-                } else {
-                    out << "  [R" << id_ << "] DN" << i
-                        << " P" << pkt.id << " bloqueado (QDN cheio)\n";
-                }
-            }
-        } else {
-            // Sobe adaptativo
-            int up_port = selectUpperPort(pkt.destination_router);
-
-            if (up_port != -1 && credits_upper_[up_port] > 0) {
-                lower_in_current_[i].pop();
-                credits_upper_[up_port]--;
-
-                ForwardRequest req;
-                req.target_router  = upper_neighbors_[up_port];
-                req.target_port    = up_port;
-                req.via_port_type  = PortType::UPPER;
-                req.packet         = pkt;
-                requests.push_back(req);
-
-                out << "  [R" << id_ << "] DN" << i
-                    << " sobe P" << pkt.id
-                    << " -> R" << req.target_router
-                    << " (U" << up_port << ", credito=" << credits_upper_[up_port] << ")\n";
-            } else {
-                // Sobe bloqueado: move para buffer central QUP
-                if (central_qup_next_.size() < CENTRAL_BUFFER_CAPACITY) {
-                    lower_in_current_[i].pop();
-                    central_qup_next_.push(pkt);
-                    out << "  [R" << id_ << "] DN" << i
-                        << " P" << pkt.id << " bloqueado (sobe) -> QUP\n";
-                } else {
-                    out << "  [R" << id_ << "] DN" << i
-                        << " P" << pkt.id << " bloqueado (QUP cheio)\n";
-                }
-            }
-        }
+        else
+            out << "  [R" << id_ << "] DN" << i << " P" << pkt.id << " bloqueado\n";
     }
 
-    // --- Processa buffer central QUP ---
-    if (!central_qup_current_.empty()) {
-        Packet pkt = central_qup_current_.front();
-        bool dest_is_below = destinationIsBelow(pkt.destination_router);
-
-        if (dest_is_below) {
-            int dn_port = selectLowerPort(pkt.destination_router, pkt.destination_terminal);
-            if (dn_port >= 0 && credits_lower_[dn_port] > 0) {
-                central_qup_current_.pop();
-                credits_lower_[dn_port]--;
-                ForwardRequest req;
-                req.target_router = lower_neighbors_[dn_port];
-                req.target_port   = dn_port;
-                req.via_port_type = PortType::LOWER;
-                req.packet        = pkt;
-                requests.push_back(req);
-                out << "  [R" << id_ << "] QUP desce P" << pkt.id
-                    << " -> R" << req.target_router << " (D" << dn_port << ")\n";
-            } else {
-                out << "  [R" << id_ << "] QUP P" << pkt.id << " ainda bloqueado\n";
-            }
-        } else {
-            int up_port = selectUpperPort(pkt.destination_router);
-            if (up_port != -1 && credits_upper_[up_port] > 0) {
-                central_qup_current_.pop();
-                credits_upper_[up_port]--;
-                ForwardRequest req;
-                req.target_router  = upper_neighbors_[up_port];
-                req.target_port    = up_port;
-                req.via_port_type  = PortType::UPPER;
-                req.packet         = pkt;
-                requests.push_back(req);
-                out << "  [R" << id_ << "] QUP sobe P" << pkt.id
-                    << " -> R" << req.target_router << " (U" << up_port << ")\n";
-            } else {
-                out << "  [R" << id_ << "] QUP P" << pkt.id << " ainda bloqueado\n";
-            }
-        }
-    }
-
-    // --- Processa entradas das portas UPPER (UP units) ---
-    // Regra: SOMENTE pode descer (lower, determinístico)
     for (int i = 0; i < SPIN_UPPER_PORTS; ++i) {
         if (upper_in_current_[i].empty()) continue;
-
         Packet pkt = upper_in_current_[i].front();
-
-        // Se destino está neste roteador: entrega local
-        if (pkt.destination_router == id_) {
+        if (tryRoute(pkt, requests, out, "UP" + std::to_string(i)))
             upper_in_current_[i].pop();
-            ForwardRequest req;
-            req.target_router  = -1;
-            req.target_port    = -1;
-            req.via_port_type  = PortType::LOWER;
-            req.packet         = pkt;
-            requests.push_back(req);
-            out << "  [R" << id_ << "] UP" << i
-                << " entrega P" << pkt.id
-                << " ao terminal T" << pkt.destination_terminal << "\n";
-            continue;
-        }
-
-        // Desce (determinístico)
-        int dn_port = selectLowerPort(pkt.destination_router, pkt.destination_terminal);
-
-        if (dn_port >= 0 && credits_lower_[dn_port] > 0) {
-            upper_in_current_[i].pop();
-            credits_lower_[dn_port]--;
-
-            ForwardRequest req;
-            req.target_router  = lower_neighbors_[dn_port];
-            req.target_port    = dn_port;
-            req.via_port_type  = PortType::LOWER;
-            req.packet         = pkt;
-            requests.push_back(req);
-
-            out << "  [R" << id_ << "] UP" << i
-                << " desce P" << pkt.id
-                << " -> R" << req.target_router
-                << " (D" << dn_port << ", credito=" << credits_lower_[dn_port] << ")\n";
-        } else {
-            // Bloqueado: vai para buffer central QDN
-            if (central_qdn_next_.size() < CENTRAL_BUFFER_CAPACITY) {
-                upper_in_current_[i].pop();
-                central_qdn_next_.push(pkt);
-                out << "  [R" << id_ << "] UP" << i
-                    << " P" << pkt.id << " bloqueado -> QDN\n";
-            } else {
-                out << "  [R" << id_ << "] UP" << i
-                    << " P" << pkt.id << " bloqueado (QDN cheio)\n";
-            }
-        }
+        else
+            out << "  [R" << id_ << "] UP" << i << " P" << pkt.id << " bloqueado\n";
     }
 
-    // --- Processa buffer central QDN (pacotes bloqueados descendo) ---
+    if (!central_qup_current_.empty()) {
+        Packet pkt = central_qup_current_.front();
+        if (tryRoute(pkt, requests, out, "QUP")) central_qup_current_.pop();
+        else out << "  [R" << id_ << "] QUP P" << pkt.id << " ainda bloqueado\n";
+    }
+
     if (!central_qdn_current_.empty()) {
         Packet pkt = central_qdn_current_.front();
-        int dn_port = selectLowerPort(pkt.destination_router, pkt.destination_terminal);
-
-        if (dn_port >= 0 && credits_lower_[dn_port] > 0) {
-            central_qdn_current_.pop();
-            credits_lower_[dn_port]--;
-
-            ForwardRequest req;
-            req.target_router  = lower_neighbors_[dn_port];
-            req.target_port    = dn_port;
-            req.via_port_type  = PortType::LOWER;
-            req.packet         = pkt;
-            requests.push_back(req);
-
-            out << "  [R" << id_ << "] QDN desce P" << pkt.id
-                << " -> R" << req.target_router
-                << " (D" << dn_port << ")\n";
-        } else {
-            out << "  [R" << id_ << "] QDN P" << pkt.id << " ainda bloqueado\n";
-        }
+        if (tryRoute(pkt, requests, out, "QDN")) central_qdn_current_.pop();
+        else out << "  [R" << id_ << "] QDN P" << pkt.id << " ainda bloqueado\n";
     }
 
-    (void)cycle;
     return requests;
 }
 
@@ -461,6 +314,18 @@ std::size_t SpinRouter::totalOccupancy() const {
     total += central_qdn_current_.size() + central_qdn_next_.size();
 
     return total;
+}
+
+std::vector<Packet> SpinRouter::pendingPackets() const {
+    std::vector<Packet> result;
+    auto drain = [&](std::queue<Packet> q) {
+        while (!q.empty()) { result.push_back(q.front()); q.pop(); }
+    };
+    for (int i = 0; i < SPIN_UPPER_PORTS; ++i) { drain(upper_in_current_[i]); drain(upper_in_next_[i]); }
+    for (int i = 0; i < SPIN_LOWER_PORTS; ++i) { drain(lower_in_current_[i]); drain(lower_in_next_[i]); }
+    drain(central_qup_current_); drain(central_qup_next_);
+    drain(central_qdn_current_); drain(central_qdn_next_);
+    return result;
 }
 
 std::string SpinRouter::statusString() const {

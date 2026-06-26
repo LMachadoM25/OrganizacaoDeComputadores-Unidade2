@@ -1,0 +1,253 @@
+=======================================================
+ Modelo simplificado de rede em chip inspirado na SPIN
+ Topologia: arvore gorda quaternaria (K4,4, 2 niveis) - 8 roteadores
+ Roteamento: menor caminho (sobe adaptativo / desce deterministico)
+ Pacotes: unidade atomica (sem flits wormhole reais)
+ Controle de fluxo: simplificado por capacidade de buffer
+=======================================================
+
+========== TOPOLOGIA SPIN - ARVORE GORDA QUATERNARIA ==========
+Roteadores: 8 (RSPIN 8x8)
+Terminais:  16
+
+Nivel 0 (topo):  R4, R5, R6, R7
+Nivel 1 (folha): R0, R1, R2, R3
+
+Conexoes (portas upper dos nos folha):
+  R0 U0-U3 -> R4, R5, R6, R7
+  R1 U0-U3 -> R4, R5, R6, R7
+  R2 U0-U3 -> R4, R5, R6, R7
+  R3 U0-U3 -> R4, R5, R6, R7
+
+Conexoes (portas lower dos nos topo):
+  R4 D0-D3 -> R0, R1, R2, R3
+  R5 D0-D3 -> R0, R1, R2, R3
+  R6 D0-D3 -> R0, R1, R2, R3
+  R7 D0-D3 -> R0, R1, R2, R3
+
+Terminais conectados aos roteadores folha:
+  T0 -> R0.D0
+  T1 -> R0.D1
+  T2 -> R0.D2
+  T3 -> R0.D3
+  T4 -> R1.D0
+  T5 -> R1.D1
+  T6 -> R1.D2
+  T7 -> R1.D3
+  T8 -> R2.D0
+  T9 -> R2.D1
+  T10 -> R2.D2
+  T11 -> R2.D3
+  T12 -> R3.D0
+  T13 -> R3.D1
+  T14 -> R3.D2
+  T15 -> R3.D3
+
+Buffers por roteador (modelo simplificado):
+  Entrada por porta:        4 pacotes
+  Buffer central QDN/QUP:   18 pacotes (overflow)
+  Controle de fluxo:        por capacidade de buffer
+
+Ciclo 0: P0 injetado T0->R0 destino=T15(R3)
+Ciclo 0: P1 injetado T0->R0 destino=T15(R3)
+Ciclo 0: P2 injetado T0->R0 destino=T15(R3)
+Ciclo 0: P3 injetado T0->R0 destino=T15(R3)
+Ciclo 0: P4 injetado T0->R0 destino=T15(R3)
+Ciclo 0: P5 injetado T0->R0 destino=T15(R3)
+Ciclo 0: P6 injetado T0->R0 destino=T15(R3)
+Ciclo 0: P7 injetado T0->R0 destino=T15(R3)
+Ciclo 0: P8 injetado T4->R1 destino=T12(R3)
+Ciclo 0: P9 injetado T8->R2 destino=T13(R3)
+Ciclo 0: P10 injetado T12->R3 destino=T0(R0)
+
+================ CICLO 0 ================
+
+Buffers (total de pacotes por roteador):
+  R0 [nivel=1] DN(in):4/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:4 total=8
+  R1 [nivel=1] DN(in):1/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R2 [nivel=1] DN(in):1/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R3 [nivel=1] DN(in):1/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R4 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R5 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R6 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R7 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+Ciclo 1: P11 injetado T4->R1 destino=T15(R3)
+Ciclo 1: P12 injetado T5->R1 destino=T15(R3)
+Ciclo 1: P13 injetado T6->R1 destino=T14(R3)
+Ciclo 1: P14 injetado T7->R1 destino=T13(R3)
+
+================ CICLO 1 ================
+  [R0] DN0 sobe P0 -> R4 (U0)
+  [R0] QUP sobe P4 -> R5 (U1)
+  [R1] DN0 sobe P8 -> R4 (U0)
+  [R2] DN0 sobe P9 -> R4 (U0)
+  [R3] DN0 sobe P10 -> R4 (U0)
+
+Buffers (total de pacotes por roteador):
+  R0 [nivel=1] DN(in):3/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:3 total=6
+  R1 [nivel=1] DN(in):1/0 1/0 1/0 1/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=4
+  R2 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R3 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R4 [nivel=0] DN(in):1/0 1/0 1/0 1/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=4
+  R5 [nivel=0] DN(in):1/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R6 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R7 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+
+================ CICLO 2 ================
+  [R0] DN0 sobe P1 -> R6 (U2)
+  [R0] QUP sobe P5 -> R7 (U3)
+  [R1] DN0 sobe P11 -> R5 (U1)
+  [R1] DN1 sobe P12 -> R6 (U2)
+  [R1] DN2 sobe P13 -> R7 (U3)
+  [R1] DN3 sobe P14 -> R4 (U0)
+  [R4] DN0 desce P0 -> R3 (D3)
+  [R4] DN1 desce P8 -> R3 (D3)
+  [R4] DN2 desce P9 -> R3 (D3)
+  [R4] DN3 desce P10 -> R0 (D0)
+  [R5] DN0 desce P4 -> R3 (D3)
+
+Buffers (total de pacotes por roteador):
+  R0 [nivel=1] DN(in):2/0 0/0 0/0 0/0  UP(in):1/0 0/0 0/0 0/0  QDN:0 QUP:2 total=5
+  R1 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R2 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R3 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):3/0 1/0 0/0 0/0  QDN:0 QUP:0 total=4
+  R4 [nivel=0] DN(in):0/0 1/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R5 [nivel=0] DN(in):0/0 1/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R6 [nivel=0] DN(in):1/0 1/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=2
+  R7 [nivel=0] DN(in):1/0 1/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=2
+
+================ CICLO 3 ================
+  [R0] DN0 sobe P2 -> R4 (U0)
+  [R0] UP0 entrega P10 ao terminal T0
+  [R0] QUP sobe P6 -> R5 (U1)
+  [R3] UP0 entrega P0 ao terminal T15
+  [R3] UP1 entrega P4 ao terminal T15
+  [R4] DN1 desce P14 -> R3 (D3)
+  [R5] DN1 desce P11 -> R3 (D3)
+  [R6] DN0 desce P1 -> R3 (D3)
+  [R6] DN1 desce P12 -> R3 (D3)
+  [R7] DN0 desce P5 -> R3 (D3)
+  [R7] DN1 desce P13 -> R3 (D3)
+  >>> P10 ENTREGUE ao T0 em R0 | latencia=3 ciclos | hops=2
+  >>> P0 ENTREGUE ao T15 em R3 | latencia=3 ciclos | hops=2
+  >>> P4 ENTREGUE ao T15 em R3 | latencia=3 ciclos | hops=2
+
+Buffers (total de pacotes por roteador):
+  R0 [nivel=1] DN(in):1/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:1 total=2
+  R1 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R2 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R3 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):3/0 1/0 2/0 2/0  QDN:0 QUP:0 total=8
+  R4 [nivel=0] DN(in):1/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R5 [nivel=0] DN(in):1/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R6 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R7 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+
+================ CICLO 4 ================
+  [R0] DN0 sobe P3 -> R6 (U2)
+  [R0] QUP sobe P7 -> R7 (U3)
+  [R3] UP0 entrega P8 ao terminal T12
+  [R3] UP1 entrega P11 ao terminal T15
+  [R3] UP2 entrega P1 ao terminal T15
+  [R3] UP3 entrega P5 ao terminal T15
+  [R4] DN0 desce P2 -> R3 (D3)
+  [R5] DN0 desce P6 -> R3 (D3)
+  >>> P8 ENTREGUE ao T12 em R3 | latencia=4 ciclos | hops=2
+  >>> P11 ENTREGUE ao T15 em R3 | latencia=3 ciclos | hops=2
+  >>> P1 ENTREGUE ao T15 em R3 | latencia=4 ciclos | hops=2
+  >>> P5 ENTREGUE ao T15 em R3 | latencia=4 ciclos | hops=2
+
+Buffers (total de pacotes por roteador):
+  R0 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R1 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R2 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R3 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):3/0 1/0 1/0 1/0  QDN:0 QUP:0 total=6
+  R4 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R5 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R6 [nivel=0] DN(in):1/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R7 [nivel=0] DN(in):1/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+
+================ CICLO 5 ================
+  [R3] UP0 entrega P9 ao terminal T13
+  [R3] UP1 entrega P6 ao terminal T15
+  [R3] UP2 entrega P12 ao terminal T15
+  [R3] UP3 entrega P13 ao terminal T14
+  [R6] DN0 desce P3 -> R3 (D3)
+  [R7] DN0 desce P7 -> R3 (D3)
+  >>> P9 ENTREGUE ao T13 em R3 | latencia=5 ciclos | hops=2
+  >>> P6 ENTREGUE ao T15 em R3 | latencia=5 ciclos | hops=2
+  >>> P12 ENTREGUE ao T15 em R3 | latencia=4 ciclos | hops=2
+  >>> P13 ENTREGUE ao T14 em R3 | latencia=4 ciclos | hops=2
+
+Buffers (total de pacotes por roteador):
+  R0 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R1 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R2 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R3 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):2/0 0/0 1/0 1/0  QDN:0 QUP:0 total=4
+  R4 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R5 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R6 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R7 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+
+================ CICLO 6 ================
+  [R3] UP0 entrega P14 ao terminal T13
+  [R3] UP2 entrega P3 ao terminal T15
+  [R3] UP3 entrega P7 ao terminal T15
+  >>> P14 ENTREGUE ao T13 em R3 | latencia=5 ciclos | hops=2
+  >>> P3 ENTREGUE ao T15 em R3 | latencia=6 ciclos | hops=2
+  >>> P7 ENTREGUE ao T15 em R3 | latencia=6 ciclos | hops=2
+
+Buffers (total de pacotes por roteador):
+  R0 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R1 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R2 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R3 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):1/0 0/0 0/0 0/0  QDN:0 QUP:0 total=1
+  R4 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R5 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R6 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R7 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+
+================ CICLO 7 ================
+  [R3] UP0 entrega P2 ao terminal T15
+  >>> P2 ENTREGUE ao T15 em R3 | latencia=7 ciclos | hops=2
+
+Buffers (total de pacotes por roteador):
+  R0 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R1 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R2 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R3 [nivel=1] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R4 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R5 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R6 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+  R7 [nivel=0] DN(in):0/0 0/0 0/0 0/0  UP(in):0/0 0/0 0/0 0/0  QDN:0 QUP:0 total=0
+
+(parada antecipada: rede vazia no ciclo 7)
+
+========== RELATORIO FINAL ==========
+Ciclos simulados:    7
+Pacotes entregues:   15
+Pacotes descartados: 0
+Pacotes pendentes:   0
+
+Pacotes entregues:
+  P10 T12(R3)->T0(R0) criado=0 entregue=3 latencia=3c hops=2 rota=R3->R4->R0
+  P0 T0(R0)->T15(R3) criado=0 entregue=3 latencia=3c hops=2 rota=R0->R4->R3
+  P4 T0(R0)->T15(R3) criado=0 entregue=3 latencia=3c hops=2 rota=R0->R5->R3
+  P8 T4(R1)->T12(R3) criado=0 entregue=4 latencia=4c hops=2 rota=R1->R4->R3
+  P11 T4(R1)->T15(R3) criado=1 entregue=4 latencia=3c hops=2 rota=R1->R5->R3
+  P1 T0(R0)->T15(R3) criado=0 entregue=4 latencia=4c hops=2 rota=R0->R6->R3
+  P5 T0(R0)->T15(R3) criado=0 entregue=4 latencia=4c hops=2 rota=R0->R7->R3
+  P9 T8(R2)->T13(R3) criado=0 entregue=5 latencia=5c hops=2 rota=R2->R4->R3
+  P6 T0(R0)->T15(R3) criado=0 entregue=5 latencia=5c hops=2 rota=R0->R5->R3
+  P12 T5(R1)->T15(R3) criado=1 entregue=5 latencia=4c hops=2 rota=R1->R6->R3
+  P13 T6(R1)->T14(R3) criado=1 entregue=5 latencia=4c hops=2 rota=R1->R7->R3
+  P14 T7(R1)->T13(R3) criado=1 entregue=6 latencia=5c hops=2 rota=R1->R4->R3
+  P3 T0(R0)->T15(R3) criado=0 entregue=6 latencia=6c hops=2 rota=R0->R6->R3
+  P7 T0(R0)->T15(R3) criado=0 entregue=6 latencia=6c hops=2 rota=R0->R7->R3
+  P2 T0(R0)->T15(R3) criado=0 entregue=7 latencia=7c hops=2 rota=R0->R4->R3
+
+Estatisticas:
+  Latencia media:  4.400000 ciclos
+  Latencia min:    3 ciclos
+  Latencia max:    7 ciclos
+  Media de saltos: 2.000000 hops
+  Throughput:      1.875000 pacotes/ciclo

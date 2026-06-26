@@ -1,33 +1,20 @@
 #pragma once
 
 // ============================================================
-// Roteador RSPIN - Implementação conforme especificação SPIN
+// Roteador RSPIN - modelo simplificado inspirado na SPIN
 // ============================================================
 //
-// Estrutura interna do RSPIN:
-//   - 4 unidades DN (D0-D3): cada uma gerencia 1 canal de entrada
-//     inferior e 1 canal de saída superior
-//   - 4 unidades UP (U0-U3): cada uma gerencia 1 canal de entrada
-//     superior e 1 canal de saída inferior
-//   - 2 buffers centrais (QUP e QDN): armazenam pacotes bloqueados
+// Estrutura:
+//   - 4 portas LOWER (D0-D3) e 4 portas UPPER (U0-U3)
+//   - buffers de entrada por porta + buffers centrais QDN/QUP
+//     usados como overflow quando a entrada enche
 //
-// Buffers conforme spec:
-//   - Buffer de entrada por porta: 4 palavras
-//   - Buffer central: 18 palavras cada (QUP e QDN)
+// Roteamento por menor caminho na arvore gorda:
+//   - destino abaixo  -> desce (deterministico)
+//   - caso contrario  -> sobe (adaptativo: porta com mais credito)
 //
-// Roteamento (regras da árvore gorda):
-//   - Pacote vindo de porta LOWER (entrada inferior):
-//       → pode ir para porta UPPER (subir) — ADAPTATIVO
-//       → pode ir para porta LOWER (descer, destino no mesmo sub-nível) — DETERMINÍSTICO
-//   - Pacote vindo de porta UPPER (entrada superior):
-//       → só pode ir para porta LOWER (descer) — DETERMINÍSTICO
-//
-// Controle de fluxo: baseado em créditos
-//   - Cada porta mantém contador de créditos para a porta vizinha
-//   - Emissor só envia se crédito > 0
-//   - Receptor devolve crédito ao consumir uma palavra do buffer
-//
-// Arbitragem: round-robin entre as portas concorrentes
+// Pacotes tratados como unidade atomica (sem flits wormhole reais).
+// Controle de fluxo simplificado por capacidade de buffer.
 // ============================================================
 
 #include "packet.hpp"
@@ -114,9 +101,15 @@ public:
     std::size_t totalOccupancy() const;
     std::string statusString()   const;
 
+    // Copia dos pacotes ainda retidos em qualquer buffer (para relatorio).
+    std::vector<Packet> pendingPackets() const;
+
 private:
-    // Roteamento adaptativo: escolhe porta upper com menor ocupação
-    // (round-robin como desempate, conforme spec)
+    // Tenta encaminhar um pacote; em caso de sucesso gera ForwardRequest.
+    bool tryRoute(const Packet& pkt, std::vector<ForwardRequest>& reqs,
+                  std::ostream& out, const std::string& src);
+
+    // Roteamento adaptativo: escolhe porta upper com mais crédito (round-robin no desempate)
     int selectUpperPort(int destination_router) const;
 
     // Roteamento determinístico: escolhe porta lower com base no destino

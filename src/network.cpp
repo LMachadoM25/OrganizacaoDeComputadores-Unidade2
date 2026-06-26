@@ -7,73 +7,49 @@
 #include <stdexcept>
 
 // ============================================================
-// Construção da topologia SPIN com 8 roteadores
-//
-// Árvore gorda quaternária (fat-tree) de 2 níveis:
-//
-//         [R4]   [R5]   [R6]   [R7]     <- nível 1 (topo)
-//          |  \ / | \ / | \ / |  |
-//         [R0] [R1] [R2] [R3]           <- nível 2 (folha)
-//          |    |    |    |
-//        T0-3 T4-7 T8-11 T12-15         <- terminais
-//
-// Cada roteador folha (R0-R3) conecta suas 4 portas UPPER
-// a todos os 4 roteadores de topo (R4-R7):
-//   R0.U0 <-> R4.D0   R0.U1 <-> R5.D0
-//   R0.U2 <-> R6.D0   R0.U3 <-> R7.D0  etc.
-//
-// Cada roteador folha conecta suas 4 portas LOWER
-// a 4 terminais (-1 indica terminal, não roteador):
-//   R0.D0 -> T0  R0.D1 -> T1  R0.D2 -> T2  R0.D3 -> T3
+// Construcao da topologia a partir do TopologyConfig (arquivo).
+// Arvore gorda K4,4 de 2 niveis: folhas R0..(L-1), topos R L..(L+T-1).
+// Cada folha liga suas portas upper a todos os roteadores de topo
+// (full-mesh); terminais vem do mapeamento do arquivo.
 // ============================================================
 
-SpinNetwork::SpinNetwork() {
-    buildTopology();
+SpinNetwork::SpinNetwork(const TopologyConfig& config) {
+    buildTopology(config);
 }
 
-void SpinNetwork::buildTopology() {
-    // 8 roteadores: R0-R3 (nível folha, tree_level=1), R4-R7 (nível topo, tree_level=0)
-    routers_.reserve(8);
+void SpinNetwork::buildTopology(const TopologyConfig& config) {
+    const int leaves = config.leaf_count;
+    const int tops   = config.top_count;
 
-    for (int i = 0; i < 4; ++i) {
-        routers_.emplace_back(i, 1); // R0-R3: folha
-    }
-    for (int i = 4; i < 8; ++i) {
-        routers_.emplace_back(i, 0); // R4-R7: topo
-    }
+    if (leaves > SPIN_UPPER_PORTS || tops > SPIN_UPPER_PORTS)
+        throw std::runtime_error("Topologia excede o numero de portas do RSPIN");
 
-    // --- Conexão folha <-> topo ---
-    // Roteador folha Ri (i=0..3) usa portas U0-U3 para R4-R7
-    // Roteador topo R(4+j) (j=0..3) usa porta Dj para o roteador folha Ri
-    for (int leaf = 0; leaf < 4; ++leaf) {
-        for (int top_port = 0; top_port < 4; ++top_port) {
-            int top_router = 4 + top_port; // R4, R5, R6, R7
+    routers_.reserve(leaves + tops);
+    for (int i = 0; i < leaves; ++i) routers_.emplace_back(i, 1);          // folha
+    for (int i = 0; i < tops;   ++i) routers_.emplace_back(leaves + i, 0); // topo
 
-            // Folha: porta upper[top_port] aponta para roteador de topo
-            routers_[leaf].setUpperNeighbor(top_port, top_router);
-
-            // Topo: porta lower[leaf] aponta para roteador folha
+    // Folha Ri usa porta upper j para o topo R(leaves+j);
+    // topo R(leaves+j) usa porta lower i para a folha Ri.
+    for (int leaf = 0; leaf < leaves; ++leaf) {
+        for (int j = 0; j < tops; ++j) {
+            int top_router = leaves + j;
+            routers_[leaf].setUpperNeighbor(j, top_router);
             routers_[top_router].setLowerNeighbor(leaf, leaf);
         }
     }
 
-    // --- Terminais nas portas lower dos roteadores folha ---
-    // R0: T0-T3 (D0=T0, D1=T1, D2=T2, D3=T3)
-    // R1: T4-T7
-    // R2: T8-T11
-    // R3: T12-T15
-    terminal_to_router_.resize(16, -1);
-    terminal_to_lower_port_.resize(16, -1);
+    // Terminais (porta lower do roteador folha = -1, pois e terminal).
+    int max_terminal = 0;
+    for (const auto& m : config.terminals)
+        max_terminal = std::max(max_terminal, m.terminal + 1);
 
-    for (int leaf = 0; leaf < 4; ++leaf) {
-        for (int port = 0; port < 4; ++port) {
-            int terminal = leaf * 4 + port;
-            terminal_to_router_[terminal]     = leaf;
-            terminal_to_lower_port_[terminal] = port;
+    terminal_to_router_.assign(max_terminal, -1);
+    terminal_to_lower_port_.assign(max_terminal, -1);
 
-            // Porta lower do roteador folha = -1 (terminal, não outro roteador)
-            routers_[leaf].setLowerNeighbor(port, -1);
-        }
+    for (const auto& m : config.terminals) {
+        terminal_to_router_[m.terminal]     = m.router;
+        terminal_to_lower_port_[m.terminal] = m.port;
+        routers_[m.router].setLowerNeighbor(m.port, -1);
     }
 }
 
@@ -86,6 +62,12 @@ int SpinNetwork::terminalCount() const {
     int count = 0;
     for (int r : terminal_to_router_) if (r != -1) count++;
     return count;
+}
+
+bool SpinNetwork::isEmpty() const {
+    for (const auto& r : routers_)
+        if (r.totalOccupancy() > 0) return false;
+    return true;
 }
 
 bool SpinNetwork::validTerminal(int terminal_id) const {
@@ -303,21 +285,28 @@ void SpinNetwork::printTopology(std::ostream& out) const {
         out << "  T" << t << " -> R" << r << ".D" << p << "\n";
     }
 
-    out << "\nBuffers por roteador:\n";
-    out << "  Entrada por porta:   " << INPUT_BUFFER_CAPACITY   << " palavras\n";
-    out << "  Buffer central QDN:  " << CENTRAL_BUFFER_CAPACITY << " palavras\n";
-    out << "  Buffer central QUP:  " << CENTRAL_BUFFER_CAPACITY << " palavras\n";
-    out << "  Creditos iniciais:   " << INITIAL_CREDITS         << " por canal\n\n";
+    out << "\nBuffers por roteador (modelo simplificado):\n";
+    out << "  Entrada por porta:        " << INPUT_BUFFER_CAPACITY   << " pacotes\n";
+    out << "  Buffer central QDN/QUP:   " << CENTRAL_BUFFER_CAPACITY << " pacotes (overflow)\n";
+    out << "  Controle de fluxo:        por capacidade de buffer\n\n";
 }
 
 // ============================================================
 // printFinalReport
 // ============================================================
 void SpinNetwork::printFinalReport(std::ostream& out) const {
+    // Pacotes ainda retidos em buffers de roteadores ao fim da simulacao.
+    std::vector<Packet> pending;
+    for (const auto& r : routers_) {
+        auto p = r.pendingPackets();
+        pending.insert(pending.end(), p.begin(), p.end());
+    }
+
     out << "\n========== RELATORIO FINAL ==========\n";
     out << "Ciclos simulados:    " << total_cycles_simulated_ << "\n";
     out << "Pacotes entregues:   " << delivered_packets_.size() << "\n";
     out << "Pacotes descartados: " << dropped_packets_.size() << "\n";
+    out << "Pacotes pendentes:   " << pending.size() << "\n";
 
     if (!delivered_packets_.empty()) {
         int    total_latency = 0;
@@ -371,6 +360,16 @@ void SpinNetwork::printFinalReport(std::ostream& out) const {
             out << "  P" << p.id
                 << " T" << p.source_terminal
                 << "->T" << p.destination_terminal << "\n";
+        }
+    }
+
+    if (!pending.empty()) {
+        out << "\nPacotes pendentes (retidos em buffers):\n";
+        for (const Packet& p : pending) {
+            out << "  P" << p.id
+                << " T" << p.source_terminal
+                << "->T" << p.destination_terminal
+                << " (atual=R" << p.current_router << ")\n";
         }
     }
 }

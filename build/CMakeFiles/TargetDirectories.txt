@@ -1,3 +1,0 @@
-/home/leonardomm/Área de trabalho/UFRN/spin_network_fixed/build/CMakeFiles/spin_network.dir
-/home/leonardomm/Área de trabalho/UFRN/spin_network_fixed/build/CMakeFiles/edit_cache.dir
-/home/leonardomm/Área de trabalho/UFRN/spin_network_fixed/build/CMakeFiles/rebuild_cache.dir

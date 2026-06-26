@@ -5,6 +5,7 @@
 #include "packet.hpp"
 #include "traffic_event.hpp"
 
+#include <algorithm>
 #include <exception>
 #include <fstream>
 #include <iostream>
@@ -23,11 +24,13 @@ public:
 
     SpinSimulation(
         sc_core::sc_module_name name,
+        const TopologyConfig& topology,
         std::vector<TrafficEvent> traffic_events,
         int max_cycles,
         std::string output_path
     )
         : sc_core::sc_module(name),
+          network_(topology),
           traffic_events_(std::move(traffic_events)),
           max_cycles_(max_cycles),
           output_path_(std::move(output_path))
@@ -46,15 +49,18 @@ private:
         }
 
         output << "=======================================================\n";
-        output << " Simulacao SystemC - Rede em Chip SPIN\n";
-        output << " Topologia: Arvore Gorda Quaternaria - 8 Roteadores RSPIN\n";
-        output << " Chaveamento: Wormhole\n";
-        output << " Roteamento: Adaptativo (subida) + Determinisico (descida)\n";
-        output << " Controle de fluxo: Baseado em creditos\n";
-        output << " Arbitragem: Round-Robin\n";
+        output << " Modelo simplificado de rede em chip inspirado na SPIN\n";
+        output << " Topologia: arvore gorda quaternaria (K4,4, 2 niveis) - 8 roteadores\n";
+        output << " Roteamento: menor caminho (sobe adaptativo / desce deterministico)\n";
+        output << " Pacotes: unidade atomica (sem flits wormhole reais)\n";
+        output << " Controle de fluxo: simplificado por capacidade de buffer\n";
         output << "=======================================================\n\n";
 
         network_.printTopology(output);
+
+        int last_event_cycle = 0;
+        for (const TrafficEvent& ev : traffic_events_)
+            last_event_cycle = std::max(last_event_cycle, ev.cycle);
 
         int packet_id = 0;
 
@@ -75,6 +81,12 @@ private:
             network_.step(cycle, output);
 
             wait(1, sc_core::SC_NS); // 1 ciclo de clock
+
+            // Parada antecipada: todos os eventos injetados e rede vazia
+            if (cycle >= last_event_cycle && network_.isEmpty()) {
+                output << "\n(parada antecipada: rede vazia no ciclo " << cycle << ")\n";
+                break;
+            }
         }
 
         network_.printFinalReport(output);
@@ -92,19 +104,24 @@ private:
 
 // ============================================================
 int sc_main(int argc, char* argv[]) {
-    std::string traffic_path = "input/traffic_1.txt";
-    std::string output_path  = "output/simulation_log.txt";
-    int max_cycles           = 20;
+    // Uso: spin_network [topologia] [trafego] [saida] [ciclos]
+    std::string topology_path = "input/topology_8.txt";
+    std::string traffic_path  = "input/traffic_1.txt";
+    std::string output_path   = "output/simulation_log.txt";
+    int max_cycles            = 20;
 
-    if (argc >= 2) traffic_path = argv[1];
-    if (argc >= 3) output_path  = argv[2];
-    if (argc >= 4) max_cycles   = std::stoi(argv[3]);
+    if (argc >= 2) topology_path = argv[1];
+    if (argc >= 3) traffic_path  = argv[2];
+    if (argc >= 4) output_path   = argv[3];
+    if (argc >= 5) max_cycles    = std::stoi(argv[4]);
 
     try {
-        auto traffic = loadTraffic(traffic_path);
+        auto topology = loadTopology(topology_path);
+        auto traffic  = loadTraffic(traffic_path);
 
         SpinSimulation sim(
             "SpinSimulation",
+            topology,
             std::move(traffic),
             max_cycles,
             output_path

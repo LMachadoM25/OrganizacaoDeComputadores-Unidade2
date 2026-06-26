@@ -1,0 +1,30 @@
+# ============================================================
+# Trafego de estresse
+# Objetivo: saturar buffers de entrada e buffers centrais
+# para verificar que nenhum pacote some sem aparecer no
+# relatorio final (entregue / descartado / pendente).
+#
+# - Varios pacotes no mesmo ciclo
+# - Varios pacotes saindo do mesmo terminal/roteador
+# - Varios pacotes disputando o mesmo destino
+# ============================================================
+
+[traffic]
+# 8 pacotes no ciclo 0 do mesmo terminal T0 para o mesmo destino T15
+0 0 15
+0 0 15
+0 0 15
+0 0 15
+0 0 15
+0 0 15
+0 0 15
+0 0 15
+# disputa pelo mesmo destino R3 a partir de varias folhas
+0 4 12
+0 8 13
+0 12 0
+# rajada no ciclo 1 saindo do mesmo roteador folha R1
+1 4 15
+1 5 15
+1 6 14
+1 7 13
