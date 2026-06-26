@@ -1,349 +1,376 @@
 #include "network.hpp"
 
 #include <algorithm>
+#include <climits>
+#include <iomanip>
 #include <iostream>
-#include <queue>
 #include <stdexcept>
 
-Network::Network(int router_count) {
-    if (router_count <= 0) {
-        throw std::runtime_error("Quantidade de roteadores invalida");
-    }
+// ============================================================
+// Construção da topologia SPIN com 8 roteadores
+//
+// Árvore gorda quaternária (fat-tree) de 2 níveis:
+//
+//         [R4]   [R5]   [R6]   [R7]     <- nível 1 (topo)
+//          |  \ / | \ / | \ / |  |
+//         [R0] [R1] [R2] [R3]           <- nível 2 (folha)
+//          |    |    |    |
+//        T0-3 T4-7 T8-11 T12-15         <- terminais
+//
+// Cada roteador folha (R0-R3) conecta suas 4 portas UPPER
+// a todos os 4 roteadores de topo (R4-R7):
+//   R0.U0 <-> R4.D0   R0.U1 <-> R5.D0
+//   R0.U2 <-> R6.D0   R0.U3 <-> R7.D0  etc.
+//
+// Cada roteador folha conecta suas 4 portas LOWER
+// a 4 terminais (-1 indica terminal, não roteador):
+//   R0.D0 -> T0  R0.D1 -> T1  R0.D2 -> T2  R0.D3 -> T3
+// ============================================================
 
-    routers_.reserve(router_count);
-    adjacency_.resize(router_count);
-
-    for (int i = 0; i < router_count; ++i) {
-        routers_.emplace_back(i);
-    }
+SpinNetwork::SpinNetwork() {
+    buildTopology();
 }
 
-int Network::routerCount() const {
-    return static_cast<int>(routers_.size());
-}
+void SpinNetwork::buildTopology() {
+    // 8 roteadores: R0-R3 (nível folha, tree_level=1), R4-R7 (nível topo, tree_level=0)
+    routers_.reserve(8);
 
-int Network::terminalCount() const {
-    int count = 0;
+    for (int i = 0; i < 4; ++i) {
+        routers_.emplace_back(i, 1); // R0-R3: folha
+    }
+    for (int i = 4; i < 8; ++i) {
+        routers_.emplace_back(i, 0); // R4-R7: topo
+    }
 
-    for (int router_id : terminal_to_router_) {
-        if (router_id != -1) {
-            count++;
+    // --- Conexão folha <-> topo ---
+    // Roteador folha Ri (i=0..3) usa portas U0-U3 para R4-R7
+    // Roteador topo R(4+j) (j=0..3) usa porta Dj para o roteador folha Ri
+    for (int leaf = 0; leaf < 4; ++leaf) {
+        for (int top_port = 0; top_port < 4; ++top_port) {
+            int top_router = 4 + top_port; // R4, R5, R6, R7
+
+            // Folha: porta upper[top_port] aponta para roteador de topo
+            routers_[leaf].setUpperNeighbor(top_port, top_router);
+
+            // Topo: porta lower[leaf] aponta para roteador folha
+            routers_[top_router].setLowerNeighbor(leaf, leaf);
         }
     }
 
+    // --- Terminais nas portas lower dos roteadores folha ---
+    // R0: T0-T3 (D0=T0, D1=T1, D2=T2, D3=T3)
+    // R1: T4-T7
+    // R2: T8-T11
+    // R3: T12-T15
+    terminal_to_router_.resize(16, -1);
+    terminal_to_lower_port_.resize(16, -1);
+
+    for (int leaf = 0; leaf < 4; ++leaf) {
+        for (int port = 0; port < 4; ++port) {
+            int terminal = leaf * 4 + port;
+            terminal_to_router_[terminal]     = leaf;
+            terminal_to_lower_port_[terminal] = port;
+
+            // Porta lower do roteador folha = -1 (terminal, não outro roteador)
+            routers_[leaf].setLowerNeighbor(port, -1);
+        }
+    }
+}
+
+// ============================================================
+int SpinNetwork::routerCount() const {
+    return static_cast<int>(routers_.size());
+}
+
+int SpinNetwork::terminalCount() const {
+    int count = 0;
+    for (int r : terminal_to_router_) if (r != -1) count++;
     return count;
 }
 
-bool Network::validRouter(int id) const {
-    return id >= 0 && id < routerCount();
+bool SpinNetwork::validTerminal(int terminal_id) const {
+    return terminal_id >= 0 &&
+           terminal_id < static_cast<int>(terminal_to_router_.size()) &&
+           terminal_to_router_[terminal_id] != -1;
 }
 
-bool Network::validTerminal(int id) const {
-    return id >= 0 &&
-           id < static_cast<int>(terminal_to_router_.size()) &&
-           terminal_to_router_[id] != -1 &&
-           validRouter(terminal_to_router_[id]);
-}
-
-int Network::routerForTerminal(int terminal_id) const {
-    if (!validTerminal(terminal_id)) {
-        throw std::runtime_error("Terminal invalido: T" + std::to_string(terminal_id));
-    }
-
+int SpinNetwork::routerForTerminal(int terminal_id) const {
     return terminal_to_router_[terminal_id];
 }
 
-void Network::addTerminal(int terminal_id, int router_id) {
-    if (terminal_id < 0) {
-        throw std::runtime_error("ID de terminal invalido");
-    }
-
-    if (!validRouter(router_id)) {
-        throw std::runtime_error("Terminal conectado a roteador invalido");
-    }
-
-    if (terminal_id >= static_cast<int>(terminal_to_router_.size())) {
-        terminal_to_router_.resize(terminal_id + 1, -1);
-    }
-
-    terminal_to_router_[terminal_id] = router_id;
+int SpinNetwork::lowerPortForTerminal(int /*router_id*/, int terminal_id) const {
+    return terminal_to_lower_port_[terminal_id];
 }
 
-void Network::addBidirectionalLink(int a, int b) {
-    if (!validRouter(a) || !validRouter(b)) {
-        throw std::runtime_error("Link possui roteador invalido");
-    }
-
-    adjacency_[a].push_back(b);
-    adjacency_[b].push_back(a);
-
-    std::sort(adjacency_[a].begin(), adjacency_[a].end());
-    std::sort(adjacency_[b].begin(), adjacency_[b].end());
-}
-
-void Network::injectPacket(const Packet& packet, int cycle, std::ostream& out) {
+// ============================================================
+// Injeção de pacote
+// ============================================================
+void SpinNetwork::injectPacket(const Packet& packet, int cycle, std::ostream& out) {
     if (!validTerminal(packet.source_terminal) ||
         !validTerminal(packet.destination_terminal)) {
-        out << "Ciclo " << cycle << ": pacote P" << packet.id
-            << " descartado por terminal de origem/destino invalido\n";
-
+        out << "Ciclo " << cycle << ": P" << packet.id
+            << " descartado (terminal invalido)\n";
         dropped_packets_.push_back(packet);
         return;
     }
 
-    Packet injected = packet;
+    Packet p = packet;
+    p.source_router      = routerForTerminal(p.source_terminal);
+    p.destination_router = routerForTerminal(p.destination_terminal);
+    p.current_router     = p.source_router;
+    p.created_cycle      = cycle;
+    p.route_history.clear();
+    // Bug 5 fix: não adiciona source_router aqui — step() registra cada hop corretamente
+    p.entry_port = PortType::LOWER;
 
-    injected.source_router = routerForTerminal(packet.source_terminal);
-    injected.destination_router = routerForTerminal(packet.destination_terminal);
-    injected.current_router = injected.source_router;
-    injected.created_cycle = cycle;
+    // Bug 4 fix: passa a porta lower correta do terminal
+    int port = lowerPortForTerminal(p.source_router, p.source_terminal);
+    bool ok = routers_[p.source_router].injectFromTerminal(p, port);
 
-    injected.route_history.clear();
-    injected.route_history.push_back(injected.source_router);
-
-    bool inserted = routers_[injected.source_router].pushCurrent(injected);
-
-    if (inserted) {
-        out << "Ciclo " << cycle << ": pacote P" << injected.id
-            << " injetado em T" << injected.source_terminal
-            << " via R" << injected.source_router
-            << " com destino T" << injected.destination_terminal
-            << " via R" << injected.destination_router
-            << "\n";
+    if (ok) {
+        out << "Ciclo " << cycle << ": P" << p.id
+            << " injetado T" << p.source_terminal
+            << "->R" << p.source_router
+            << " destino=T" << p.destination_terminal
+            << "(R" << p.destination_router << ")\n";
     } else {
-        out << "Ciclo " << cycle << ": pacote P" << injected.id
-            << " descartado: buffer cheio em R" << injected.source_router << "\n";
-
-        dropped_packets_.push_back(injected);
+        out << "Ciclo " << cycle << ": P" << p.id
+            << " descartado (buffer cheio em R" << p.source_router << ")\n";
+        dropped_packets_.push_back(p);
     }
 }
 
-int Network::findNextHop(int source_router, int destination_router) const {
-    if (source_router == destination_router) {
-        return source_router;
-    }
-
-    std::vector<int> previous(routerCount(), -1);
-    std::queue<int> pending;
-
-    previous[source_router] = source_router;
-    pending.push(source_router);
-
-    while (!pending.empty()) {
-        int current = pending.front();
-        pending.pop();
-
-        for (int neighbor : adjacency_[current]) {
-            if (previous[neighbor] != -1) {
-                continue;
-            }
-
-            previous[neighbor] = current;
-
-            if (neighbor == destination_router) {
-                while (!pending.empty()) {
-                    pending.pop();
-                }
-
-                break;
-            }
-
-            pending.push(neighbor);
-        }
-    }
-
-    if (previous[destination_router] == -1) {
-        return -1;
-    }
-
-    int node = destination_router;
-
-    while (previous[node] != source_router) {
-        node = previous[node];
-    }
-
-    return node;
-}
-
-void Network::step(int cycle, std::ostream& out) {
+// ============================================================
+// step() — executa um ciclo de simulação
+// ============================================================
+void SpinNetwork::step(int cycle, std::ostream& out) {
     out << "\n================ CICLO " << cycle << " ================\n";
 
-    for (int router_id = 0; router_id < routerCount(); ++router_id) {
-        Router& router = routers_[router_id];
+    // Coleta todas as requisições de encaminhamento
+    // (processamos todos os roteadores antes de entregar, evitando
+    //  que um pacote seja processado duas vezes no mesmo ciclo)
+    struct Delivery {
+        int target_router;
+        int target_port;
+        PortType via_port_type;
+        Packet packet;
+        int from_router;
+    };
 
-        if (!router.hasCurrentPacket()) {
+    std::vector<Delivery> deliveries;
+
+    for (int r = 0; r < routerCount(); ++r) {
+        auto requests = routers_[r].process(cycle, out);
+
+        for (auto& req : requests) {
+            Delivery d;
+            d.target_router   = req.target_router;
+            d.target_port     = req.target_port;
+            d.via_port_type   = req.via_port_type;
+            d.packet          = req.packet;
+            d.from_router     = r;
+            deliveries.push_back(d);
+        }
+    }
+
+    // Aplica as entregas
+    for (auto& d : deliveries) {
+        Packet& pkt = d.packet;
+        // Bug 5 fix: registra o roteador que está encaminhando (sem duplicar fonte)
+        pkt.route_history.push_back(d.from_router);
+
+        // Entrega ao terminal
+        if (d.target_router == -1) {
+            pkt.delivered_cycle = cycle;
+            pkt.current_router  = d.from_router;
+            delivered_packets_.push_back(pkt);
+
+            int latency = pkt.delivered_cycle - pkt.created_cycle;
+            int hops    = static_cast<int>(pkt.route_history.size()) - 1;
+
+            out << "  >>> P" << pkt.id
+                << " ENTREGUE ao T" << pkt.destination_terminal
+                << " em R" << d.from_router
+                << " | latencia=" << latency << " ciclos"
+                << " | hops=" << hops << "\n";
             continue;
         }
 
-        Packet packet = router.popCurrent();
+        // Encaminha para próximo roteador
+        pkt.current_router = d.target_router;
 
-        if (packet.destination_router == router_id) {
-            packet.current_router = router_id;
-            packet.delivered_cycle = cycle;
-            delivered_packets_.push_back(packet);
+        bool accepted = false;
 
-            out << "R" << router_id << " entregou P" << packet.id
-                << " ao terminal T" << packet.destination_terminal
-                << " | latencia=" << (packet.delivered_cycle - packet.created_cycle)
-                << " ciclos"
-                << " | " << packet.toString() << "\n";
+        if (d.via_port_type == PortType::UPPER) {
+            // Folha → Topo: o topo recebe pela porta lower cujo índice = ID do roteador folha.
+            // Bug 2 fix: usar d.from_router como índice da porta lower do topo,
+            // não d.target_port (que é a porta upper do roteador folha).
+            accepted = routers_[d.target_router].receiveFromLower(d.from_router, pkt);
 
-            continue;
-        }
-
-        int next_hop = findNextHop(router_id, packet.destination_router);
-
-        if (next_hop == -1) {
-            out << "R" << router_id << " descartou P" << packet.id
-                << ": nao ha rota ate R" << packet.destination_router << "\n";
-
-            dropped_packets_.push_back(packet);
-            continue;
-        }
-
-        Packet forwarded = packet;
-        forwarded.current_router = next_hop;
-        forwarded.route_history.push_back(next_hop);
-
-        bool forwarded_ok = routers_[next_hop].pushNext(forwarded);
-
-        if (forwarded_ok) {
-            out << "R" << router_id << " encaminhou P" << packet.id
-                << " para R" << next_hop
-                << " | destino=T" << packet.destination_terminal
-                << "(R" << packet.destination_router << ")"
-                << "\n";
+            // Bug 1 fix: crédito devolvido após commitNextCycle (ver abaixo).
+            // Marcamos quais créditos devolver em uma lista separada.
         } else {
-            Packet blocked = packet;
-            blocked.current_router = router_id;
+            // Topo → Folha: a folha recebe pela porta upper cujo índice = ID relativo no topo.
+            // Bug 2 (descida): target_port aqui é a porta lower do topo, que é o ID da folha.
+            // A porta upper da folha que conecta ao topo (d.from_router) é o offset do topo: from_router - 4.
+            int upper_port_on_leaf = d.from_router - 4; // R4=0, R5=1, R6=2, R7=3
+            accepted = routers_[d.target_router].receiveFromUpper(upper_port_on_leaf, pkt);
+        }
 
-            bool requeued = routers_[router_id].pushNext(blocked);
-
-            out << "R" << router_id << " bloqueou P" << packet.id
-                << ": buffer cheio em R" << next_hop;
-
-            if (requeued) {
-                out << " | pacote permanece em R" << router_id;
-            } else {
-                out << " | pacote descartado por buffer local cheio";
-                dropped_packets_.push_back(packet);
-            }
-
-            out << "\n";
+        if (!accepted) {
+            out << "  !!! P" << pkt.id
+                << " descartado: buffer cheio em R" << d.target_router << "\n";
+            dropped_packets_.push_back(pkt);
         }
     }
 
-    for (Router& router : routers_) {
-        router.commitNextCycle();
+    // Bug 1 fix: avança buffers ANTES de devolver créditos.
+    // O crédito só volta ao emissor depois que o receptor realmente consumiu
+    // a posição (moved next_ → current_). Isso respeita a semântica de crédito SPIN.
+    for (auto& r : routers_) {
+        r.commitNextCycle();
     }
 
-    out << "\nBuffers atuais dos roteadores:\n";
+    // Bug 1 + 3 fix: devolve créditos após commit dos buffers
+    for (auto& d : deliveries) {
+        if (d.target_router == -1) continue; // entrega local: sem crédito a devolver
 
-    for (const Router& router : routers_) {
-        out << "R" << router.id()
-            << ": " << router.currentOccupancy()
-            << " pacote(s)\n";
+        if (d.via_port_type == PortType::UPPER) {
+            // Folha → Topo: devolve crédito upper do roteador folha (emissor)
+            for (int p = 0; p < SPIN_UPPER_PORTS; ++p) {
+                if (routers_[d.from_router].upperNeighbor(p) == d.target_router) {
+                    routers_[d.from_router].returnCreditUpper(p);
+                    break;
+                }
+            }
+        } else {
+            // Bug 3 fix: Topo → Folha: devolve crédito lower do roteador TOPO (emissor),
+            // buscando a porta lower cujo vizinho é o roteador folha destino.
+            for (int p = 0; p < SPIN_LOWER_PORTS; ++p) {
+                if (routers_[d.from_router].lowerNeighbor(p) == d.target_router) {
+                    routers_[d.from_router].returnCreditLower(p);
+                    break;
+                }
+            }
+        }
     }
+
+    // Estado dos buffers
+    out << "\nBuffers (total de pacotes por roteador):\n";
+    for (const auto& r : routers_) {
+        out << "  " << r.statusString() << "\n";
+    }
+
+    total_cycles_simulated_ = cycle;
 }
 
-void Network::printTopology(std::ostream& out) const {
-    out << "========== TOPOLOGIA SPIN SIMPLIFICADA ==========\n";
-    out << "Roteadores: " << routerCount() << "\n";
-    out << "Terminais: " << terminalCount() << "\n\n";
+// ============================================================
+// printTopology
+// ============================================================
+void SpinNetwork::printTopology(std::ostream& out) const {
+    out << "========== TOPOLOGIA SPIN - ARVORE GORDA QUATERNARIA ==========\n";
+    out << "Roteadores: " << routerCount() << " (RSPIN 8x8)\n";
+    out << "Terminais:  " << terminalCount() << "\n\n";
 
-    out << "Links entre roteadores:\n";
+    out << "Nivel 0 (topo):  R4, R5, R6, R7\n";
+    out << "Nivel 1 (folha): R0, R1, R2, R3\n\n";
 
-    for (int i = 0; i < routerCount(); ++i) {
-        out << "R" << i << " -> ";
-
-        for (std::size_t j = 0; j < adjacency_[i].size(); ++j) {
-            out << "R" << adjacency_[i][j];
-
-            if (j + 1 < adjacency_[i].size()) {
-                out << ", ";
-            }
+    out << "Conexoes (portas upper dos nos folha):\n";
+    for (int leaf = 0; leaf < 4; ++leaf) {
+        out << "  R" << leaf << " U0-U3 -> ";
+        for (int p = 0; p < SPIN_UPPER_PORTS; ++p) {
+            out << "R" << routers_[leaf].upperNeighbor(p);
+            if (p < SPIN_UPPER_PORTS - 1) out << ", ";
         }
-
         out << "\n";
     }
 
-    out << "\nTerminais conectados aos roteadores:\n";
-
-    for (int terminal_id = 0;
-         terminal_id < static_cast<int>(terminal_to_router_.size());
-         ++terminal_id) {
-        if (terminal_to_router_[terminal_id] == -1) {
-            continue;
+    out << "\nConexoes (portas lower dos nos topo):\n";
+    for (int top = 4; top < 8; ++top) {
+        out << "  R" << top << " D0-D3 -> ";
+        for (int p = 0; p < SPIN_LOWER_PORTS; ++p) {
+            int n = routers_[top].lowerNeighbor(p);
+            out << (n == -1 ? "-" : "R" + std::to_string(n));
+            if (p < SPIN_LOWER_PORTS - 1) out << ", ";
         }
-
-        out << "T" << terminal_id
-            << " -> R" << terminal_to_router_[terminal_id]
-            << "\n";
+        out << "\n";
     }
+
+    out << "\nTerminais conectados aos roteadores folha:\n";
+    for (int t = 0; t < terminalCount(); ++t) {
+        int r = terminal_to_router_[t];
+        int p = terminal_to_lower_port_[t];
+        out << "  T" << t << " -> R" << r << ".D" << p << "\n";
+    }
+
+    out << "\nBuffers por roteador:\n";
+    out << "  Entrada por porta:   " << INPUT_BUFFER_CAPACITY   << " palavras\n";
+    out << "  Buffer central QDN:  " << CENTRAL_BUFFER_CAPACITY << " palavras\n";
+    out << "  Buffer central QUP:  " << CENTRAL_BUFFER_CAPACITY << " palavras\n";
+    out << "  Creditos iniciais:   " << INITIAL_CREDITS         << " por canal\n\n";
 }
 
-void Network::printFinalReport(std::ostream& out) const {
+// ============================================================
+// printFinalReport
+// ============================================================
+void SpinNetwork::printFinalReport(std::ostream& out) const {
     out << "\n========== RELATORIO FINAL ==========\n";
-    out << "Pacotes entregues: " << delivered_packets_.size() << "\n";
+    out << "Ciclos simulados:    " << total_cycles_simulated_ << "\n";
+    out << "Pacotes entregues:   " << delivered_packets_.size() << "\n";
     out << "Pacotes descartados: " << dropped_packets_.size() << "\n";
 
-    int total_latency = 0;
-    int total_hops = 0;
-
     if (!delivered_packets_.empty()) {
+        int    total_latency = 0;
+        int    total_hops    = 0;
+        int    max_latency   = 0;
+        int    min_latency   = INT_MAX;
+
         out << "\nPacotes entregues:\n";
 
-        for (const Packet& packet : delivered_packets_) {
-            int latency = packet.delivered_cycle - packet.created_cycle;
-            int hops = static_cast<int>(packet.route_history.size()) - 1;
+        for (const Packet& p : delivered_packets_) {
+            int lat  = p.delivered_cycle - p.created_cycle;
+            int hops = static_cast<int>(p.route_history.size()) - 1;
 
-            total_latency += latency;
-            total_hops += hops;
+            total_latency += lat;
+            total_hops    += hops;
+            max_latency    = std::max(max_latency, lat);
+            min_latency    = std::min(min_latency, lat);
 
-            out << "P" << packet.id
-                << " origem=T" << packet.source_terminal
-                << "(R" << packet.source_router << ")"
-                << " destino=T" << packet.destination_terminal
-                << "(R" << packet.destination_router << ")"
-                << " criado=" << packet.created_cycle
-                << " entregue=" << packet.delivered_cycle
-                << " latencia=" << latency
-                << " ciclos"
+            out << "  P" << p.id
+                << " T" << p.source_terminal << "(R" << p.source_router << ")"
+                << "->T" << p.destination_terminal << "(R" << p.destination_router << ")"
+                << " criado=" << p.created_cycle
+                << " entregue=" << p.delivered_cycle
+                << " latencia=" << lat << "c"
                 << " hops=" << hops
                 << " rota=";
 
-            for (std::size_t i = 0; i < packet.route_history.size(); ++i) {
-                out << "R" << packet.route_history[i];
-
-                if (i + 1 < packet.route_history.size()) {
-                    out << "->";
-                }
+            for (std::size_t i = 0; i < p.route_history.size(); ++i) {
+                out << "R" << p.route_history[i];
+                if (i + 1 < p.route_history.size()) out << "->";
             }
-
             out << "\n";
         }
 
-        double average_latency =
-            static_cast<double>(total_latency) /
-            static_cast<double>(delivered_packets_.size());
-
-        double average_hops =
-            static_cast<double>(total_hops) /
-            static_cast<double>(delivered_packets_.size());
-
+        int n = static_cast<int>(delivered_packets_.size());
         out << "\nEstatisticas:\n";
-        out << "Latencia media: " << average_latency << " ciclos\n";
-        out << "Media de saltos: " << average_hops << " hops\n";
+        out << "  Latencia media:  " << std::fixed
+            << static_cast<double>(total_latency) / n << " ciclos\n";
+        out << "  Latencia min:    " << min_latency << " ciclos\n";
+        out << "  Latencia max:    " << max_latency << " ciclos\n";
+        out << "  Media de saltos: "
+            << static_cast<double>(total_hops) / n << " hops\n";
+        out << "  Throughput:      "
+            << static_cast<double>(n) / (total_cycles_simulated_ + 1)
+            << " pacotes/ciclo\n";
     }
 
     if (!dropped_packets_.empty()) {
         out << "\nPacotes descartados:\n";
-
-        for (const Packet& packet : dropped_packets_) {
-            out << "P" << packet.id
-                << " origem=T" << packet.source_terminal
-                << " destino=T" << packet.destination_terminal
-                << "\n";
+        for (const Packet& p : dropped_packets_) {
+            out << "  P" << p.id
+                << " T" << p.source_terminal
+                << "->T" << p.destination_terminal << "\n";
         }
     }
 }

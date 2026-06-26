@@ -1,13 +1,17 @@
 # ============================================================
-# Trafego de teste para a rede SPIN simplificada
+# Trafego 1: Teste basico - pacotes entre folhas diferentes
 # ============================================================
+# Formato: <ciclo> <terminal_origem> <terminal_destino>
 #
-# Formato:
-# <ciclo> <terminal_origem> <terminal_destino>
+# Cada pacote deve cruzar a arvore:
+#   folha -> topo (subida adaptativa) -> folha (descida deterministica)
 #
-# Exemplo:
-# 0 0 15
-# No ciclo 0, o terminal T0 envia um pacote para o terminal T15.
+# T0(R0) -> T15(R3): R0 -> R4/R5/R6/R7 -> R3
+# T5(R1) -> T10(R2): R1 -> Rx -> R2
+# T14(R3) -> T1(R0): R3 -> Rx -> R0
+# T3(R0) -> T12(R3): R0 -> Rx -> R3
+# T8(R2) -> T7(R1):  R2 -> Rx -> R1
+# ============================================================
 
 [traffic]
 0 0 15

@@ -6,19 +6,15 @@ std::string Packet::toString() const {
     std::ostringstream oss;
 
     oss << "P" << id
-        << " origem=T" << source_terminal << "(R" << source_router << ")"
-        << " destino=T" << destination_terminal << "(R" << destination_router << ")"
+        << " T" << source_terminal << "(R" << source_router << ")"
+        << "->T" << destination_terminal << "(R" << destination_router << ")"
         << " atual=R" << current_router;
 
     if (!route_history.empty()) {
         oss << " rota=";
-
         for (std::size_t i = 0; i < route_history.size(); ++i) {
             oss << "R" << route_history[i];
-
-            if (i + 1 < route_history.size()) {
-                oss << "->";
-            }
+            if (i + 1 < route_history.size()) oss << "->";
         }
     }
 
